@@ -85,7 +85,6 @@ class Interpreter:
         self.skipNextCommand = False
         self.executionStack = []
         self.returnCalled = False
-        self.loopCalled = False
 
         self.Parse()
     
