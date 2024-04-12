@@ -45,5 +45,5 @@ INT    = "int"
 FLOAT  = "float"
 STRING = "string"
 
-START_BLOCK = "#01000010"
-END_BLOCK   = "#01000101"
+START_BLOCK = "#1"
+END_BLOCK   = "#0"

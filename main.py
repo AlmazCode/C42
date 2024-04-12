@@ -1,3 +1,8 @@
+"""
+Author: AlmazCode
+Version: 1.0.2.42
+"""
+
 from interpreter import Interpreter
 
 

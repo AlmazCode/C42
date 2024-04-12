@@ -84,8 +84,8 @@ class Interpreter:
         self.currentCommand = ""
         self.skipNextCommand = False
         self.executionStack = []
-        self.visitedBlocks = set()
         self.returnCalled = False
+        self.loopCalled = False
 
         self.Parse()
     
@@ -93,39 +93,41 @@ class Interpreter:
         if blockId not in self.blocks:
             BlockNotFound(blockId)
         
-        if blockId in self.visitedBlocks:
-            return
-        else:
-            self.visitedBlocks.add(blockId)
-        
         self.executionStack.append([blockId, False])
+        idx = {block: -1 for block in self.blocks}
 
         while self.executionStack:
             currentBlock = self.executionStack.pop()
             commands = self.blocks[currentBlock[0]]
-            commandIndex = -1
+            blockName = currentBlock[0]
+            blockIsLoop = currentBlock[1]
 
-            for line, command in commands:
-                self.currentLine = line
-                self.currentCommand = " ".join(command)
-
-                commandIndex += 1
+            while 1:
+                idx[blockName] += 1 if not idx[blockName] + 1 > len(commands) - 1 else 0
+                self.currentLine = commands[idx[blockName]][0]
+                self.currentCommand = " ".join(commands[idx[blockName]][1])
 
                 if self.skipNextCommand:
                     self.skipNextCommand = False
                     continue
-                
-                nextCommand = None if commandIndex + 1 > len(commands) - 1 else commands[commandIndex + 1]
-                self.ExecuteCommand(command, nextCommand)
-                
+
+                nextCommand = None if idx[blockName] + 1 > len(commands) - 1 else commands[idx[blockName] + 1]
+                forceExit = self.ExecuteCommand(commands[idx[blockName]][1], nextCommand)
+
                 if self.returnCalled:
                     break
+                elif forceExit:
+                    break
+                elif idx[blockName] >= len(commands) - 1:
+                    idx[blockName] = -1
+                    break
 
-            if not self.returnCalled and currentBlock[1]:
+            if not self.returnCalled and blockIsLoop:
                 self.executionStack.append(currentBlock)
                 self.returnCalled = False
-        
-        self.visitedBlocks.remove(blockId)
+            elif forceExit and not idx[blockName] >= len(commands) - 1:
+                self.executionStack.append(currentBlock)
+                self.executionStack[-1], self.executionStack[-2] = self.executionStack[-2], self.executionStack[-1]
 
     def ExecuteCommand(self, command, nextCommand):
         CMD = command[0]
@@ -157,7 +159,7 @@ class Interpreter:
             else:
                 DifferentTypes(self.currentLine, self.currentCommand)
 
-            self.ChangeValue(cell1, result)
+            self.ChangeValue(cell1, result, True)
         
         elif CMD == SUBTRACT_CELLS:
             result = None
@@ -238,7 +240,9 @@ class Interpreter:
             cell2 = self.GetCell(self.GetArgument(2, command))
 
             if cell1.value == cell2.value and nextCommand:
-                self.ExecuteCommand(nextCommand, None)
+                self.currentLine = nextCommand[0]
+                self.currentCommand = " ".join(nextCommand[1])
+                self.ExecuteCommand(nextCommand[1], None)
             else:
                 self.skipNextCommand = True
         
@@ -334,7 +338,8 @@ class Interpreter:
             cell = self.GetCell(self.GetArgument(1, command))
 
             if str(cell.value) in self.blocks:
-                self.Interpret(str(cell.value))
+                self.executionStack.append([str(cell.value), False])
+                return True
             else:
                 BlockNotFound(cell.value)
         
@@ -448,6 +453,7 @@ class Interpreter:
 
             if str(cell.value) in self.blocks:
                 self.executionStack.append([str(cell.value), True])
+                return True
             else:
                 BlockNotFound(cell.value)
         
@@ -455,7 +461,7 @@ class Interpreter:
             cell1 = self.GetCell(self.GetArgument(1, command))
             cell2 = self.GetCell(self.GetArgument(2, command))
 
-            if cell1.valueType == cell2.valueType and cell1.value == STRING:
+            if cell1.valueType == cell2.valueType and cell1.valueType == STRING:
                 cell1.value = random.choice(cell2.value)
             else:
                 TypeIsNotString(self.currentLine, self.currentCommand)
@@ -522,6 +528,9 @@ class Interpreter:
             if line.startswith(START_BLOCK):
                 if block != None:
                     del result[block]
+                if len(line.split()) <= 1 or len(line.split()) > 2:
+                    block = None
+                    continue
                 block = line.split()[1]
                 result[block] = []
             elif line.startswith(END_BLOCK):
