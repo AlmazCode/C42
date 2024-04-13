@@ -120,7 +120,7 @@ class Interpreter:
         
         elif CMD == PRINT:
             cell = self.GetCell(self.GetArgument(1, command))
-            print(str(cell.value).replace("\\n", "\n"), end = "", flush = False)
+            print(str(cell.value).replace("\\n", "\n"), end = "", flush = True)
     
         elif CMD == INPUT:
             cell = self.GetCell(self.GetArgument(1, command))
