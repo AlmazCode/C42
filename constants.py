@@ -47,5 +47,3 @@ FLOAT  = "2"
 
 START_BLOCK = "#1" # Начало блока
 END_BLOCK   = "#0" # Конец блока
-
-#hello

@@ -1,6 +1,6 @@
 """
 Author: AlmazCode
-Version: 1.0.5.42
+Version: 1.1o
 """
 
 from interpreter import Interpreter
