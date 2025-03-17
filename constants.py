@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 EXIT                = "01" # Завершение программы.
 PRINT               = "02" # Вывод ячейки.
 INPUT               = "03" # Запись пользовательских данных в ячейку.
@@ -41,11 +43,22 @@ LCM_CELLS           = "40" # Вычисление НОК (наименьшего
 CREATE_CELL         = "41" # Создание новой ячейки
 RETURN              = "42" # Возвращение из блока.
 
-INT    = "0"
-STRING = "1"
-FLOAT  = "2"
+
+class CellDataType:
+    INTEGER = "0"
+    STRING  = "1"
+    FLOAT   = "2"
+
+class UpdateMode:
+    WRITE   = "w"
+    ADD     = "a"
+
+@dataclass
+class ExecutionFrame:
+    block_name: str  # Имя блока кода
+    is_looping: bool  # Флаг, указывающий, что блок выполняется циклически
+    line_index: int   # Текущий индекс строки в блоке
+
 
 START_BLOCK = "#1" # Начало блока
 END_BLOCK   = "#0" # Конец блока
-
-#plapslpals

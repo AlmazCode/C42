@@ -1,576 +1,532 @@
-import re
-import os
-import platform
-import time
-import random
+import re, os, sys, time, random
 
 from constants import *
 from exception import *
 
+from cell import *
 
-usingOS = platform.system()
-
-class Cell:
-
-    CELLS: list['Cell'] = []
-
-    def __init__(self, name: str, defaultValue: int | float | str, dataType: str):
-
-        cell = Cell.GetCellByName(name)
-        if cell != None:
-            Cell.CELLS.remove(cell)
-        Cell.CELLS.append(self)
-
-        self.name = name
-        self.defaultValue = defaultValue
-        self.value = defaultValue
-        self.dataType = dataType
-    
-    @staticmethod
-    def GetCellByName(name: str) -> 'Cell':
-        return next((cell for cell in Cell.CELLS if cell.name == name), None)
-
-    @staticmethod
-    def isFloat(s):
-        try: 
-            float(s)
-            return True
-        except:
-            return False
-
-    @staticmethod
-    def isInt(s):
-        try: 
-            int(s)
-            return True
-        except:
-            return False
-
-    @staticmethod
-    def isString(s):
-        return s[0] == "\"" and s[-1] == "\"" if s != "" else True
-    
-    @staticmethod
-    def isCorrectName(name: str):
-        return bool(re.match(r"^-[1-9][0-9]*$", name))
-    
-    @staticmethod
-    def isCorrectDataType(char: str):
-        return char in ["0", "1", "2"]
 
 class Interpreter:
-    def __init__(self, code: str):
+    def __init__(self, source: str):
 
-        self.cells: list[Cell] = []
+        self.cells: list[Cell]                      = []
+        self.current_line_number: int               = 0
+        self.current_command_in_string: str         = ""
+        self.current_command: list[str]             = None 
+        self.will_skip_next_line                    = False
+        self.execution_stack: list[ExecutionFrame] = []
+        self.is_return_called: bool                 = False
 
-        self.code = code
-        self.blocks: dict[list[list[str]]] = {}
-        self.currentLine = 0
-        self.currentCommand = ""
-        self.skipNextCommand = False
-        self.executionStack: list[list[str, bool]] = []
-        self.returnCalled = False
-
-        self.Parse()
+        self.blocks = self.parse(source)
     
-    def Interpret(self, blockId: str = "1"):
-        if blockId not in self.blocks:
-            BlockNotFound(blockId)
+    def interpret(self, block_id: str = "1"):
+        if block_id not in self.blocks:
+            raise BlockNotFound(block_id)
         
-        self.executionStack.append([blockId, False])
-        idx = {block: -1 for block in self.blocks}
+        self.execution_stack.append(
+            ExecutionFrame(block_name = block_id, is_looping = False, line_index = 0)
+        )
 
-        while self.executionStack:
-            currentBlock = self.executionStack.pop()
-            commands = self.blocks[currentBlock[0]]
-            blockName = currentBlock[0]
-            blockIsLoop = currentBlock[1]
+        while self.execution_stack:
 
-            while 1:
-                idx[blockName] += 1 if not idx[blockName] + 1 > len(commands) - 1 else 0
-                self.currentLine = commands[idx[blockName]][0]
-                self.currentCommand = " ".join(commands[idx[blockName]][1])
+            frame = self.execution_stack.pop()
+            block = self.blocks[frame.block_name]
 
-                if self.skipNextCommand:
-                    self.skipNextCommand = False
+            while frame.line_index < len(block):
+                self.current_line_number, self.current_command = block[frame.line_index]
+                self.current_command_in_string = " ".join(self.current_command)
+
+                if self.will_skip_next_line:
+                    self.will_skip_next_line = False
+                    frame.line_index += 1
                     continue
 
-                nextCommand = None if idx[blockName] + 1 > len(commands) - 1 else commands[idx[blockName] + 1]
-                forceExit = self.ExecuteCommand(commands[idx[blockName]][1], nextCommand)
+                next_command = block[frame.line_index + 1] if frame.line_index + 1 < len(block) else None
+                force_exit = self.interpret_line(self.current_command, next_command)
 
-                if self.returnCalled:
-                    break
-                elif forceExit:
-                    break
-                elif idx[blockName] >= len(commands) - 1:
-                    idx[blockName] = -1
+                frame.line_index += 1
+
+                if self.is_return_called or force_exit:
                     break
 
-            if not self.returnCalled and blockIsLoop:
-                self.executionStack.append(currentBlock)
-                self.returnCalled = False
-            elif forceExit and not idx[blockName] >= len(commands) - 1:
-                self.executionStack.append(currentBlock)
-                self.executionStack[-1], self.executionStack[-2] = self.executionStack[-2], self.executionStack[-1]
-
-    def ExecuteCommand(self, command, nextCommand):
-        CMD = command[0]
-
-        if CMD == EXIT: exit(1)
-        
-        elif CMD == PRINT:
-            cell = self.GetCell(self.GetArgument(1, command))
-            print(str(cell.value).replace("\\n", "\n"), end = "", flush = True)
+            if frame.is_looping and not self.is_return_called:
+                self.execution_stack.append(
+                    ExecutionFrame(block_name = frame.block_name, is_looping = frame.is_looping, line_index = 0)
+                )
+                self.is_return_called = False
+            elif force_exit and frame.line_index < len(block):
+                self.execution_stack.append(
+                    ExecutionFrame(block_name = frame.block_name, is_looping = frame.is_looping,
+                                   line_index = frame.line_index)
+                )
+                self.execution_stack[-1], self.execution_stack[-2] = self.execution_stack[-2], self.execution_stack[-1]
     
-        elif CMD == INPUT:
-            cell = self.GetCell(self.GetArgument(1, command))
+    def interpret_line(self, line, next_line):
+        command = line[0]
+
+        if command == EXIT:
+            exit(1)
+        
+        # PRINT command realization
+        elif command == PRINT:
+            cell: Cell = self.get_cell(self.get_argument(1))
+            formatted_value = str(cell.value).replace("\\n", "\n")
+            print(formatted_value, end = "", flush = True)
+    
+        elif command == INPUT:
+            cell = self.get_cell(self.get_argument(1))
             value = input()
-            self.ChangeValue(cell, value, False)
+            self.update_value(cell, value)
 
-        elif CMD == ASSIGN_VALUE:
-            value = self.GetArgument(2, command)
-            cell = self.GetCell(self.GetArgument(1, command))
-            self.ChangeValue(cell, value)
+        elif command == ASSIGN_VALUE:
+            cell = self.get_cell(self.get_argument(1))
+            value = self.get_argument(2)
+            self.update_value(cell, value)
         
-        elif CMD == SUM_CELLS:
-            result = None
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == SUM_CELLS:
+            cell1: Cell = self.get_cell(self.get_argument(1))
+            cell2: Cell = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType:
+            if isinstance(cell1, type(cell2)):
                 result = cell1.value + cell2.value
+                self.update_value(cell1, result, False)
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
-
-            self.ChangeValue(cell1, result, False)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == SUBTRACT_CELLS:
-            result = None
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == SUBTRACT_CELLS:
+            cell1: Cell = self.get_cell(self.get_argument(1))
+            cell2: Cell = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType:
-                if cell1.dataType != STRING:
+            if isinstance(cell1, type(cell2)):
+                if not isinstance(cell1, StringCell):
                     result = cell1.value - cell2.value
+                    self.update_value(cell1, result)
                 else:
-                    NoString(self.currentLine, self.currentCommand)
+                    NoString(self.current_line_number, self.current_command_in_string)
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
-
-            self.ChangeValue(cell1, result)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == MULTIPLY_CELLS:
-            result = None
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == MULTIPLY_CELLS:
+            cell1: Cell = self.get_cell(self.get_argument(1))
+            cell2: Cell = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType:
-                if cell1.dataType != STRING:
+            if isinstance(cell1, type(cell2)):
+                if not isinstance(cell1, StringCell):
                     result = cell1.value * cell2.value
+                    self.update_value(cell1, result)
                 else:
-                    NoString(self.currentLine, self.currentCommand)
+                    NoString(self.current_line_number, self.current_command_in_string)
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
-
-            self.ChangeValue(cell1, result)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == DIVIDE_CELLS:
-            result = None
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == DIVIDE_CELLS:
+            cell1: Cell = self.get_cell(self.get_argument(1))
+            cell2: Cell = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType:
-                if cell1.dataType != STRING:
-                    result = cell1.value / cell2.value if cell1.dataType == FLOAT else cell1.value // cell2.value
+            if isinstance(cell1, type(cell2)):
+                if not isinstance(cell1, StringCell):
+                    result = cell1.value / cell2.value
+                    self.update_value(cell1, result)
                 else:
-                    NoString(self.currentLine, self.currentCommand)
+                    NoString(self.current_line_number, self.current_command_in_string)
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
+        
+        elif command == INCREMENT_CELL:
+            cell = self.get_cell(self.get_argument(1))
+            self.update_value(cell, 1, UpdateMode.ADD)
+        
+        elif command == DECREMENT_CELL:
+            cell = self.get_cell(self.get_argument(1))
+            self.update_value(cell, -1, UpdateMode.ADD)
+        
+        elif command == MODULO_CELLS:
+            cell1: Cell = self.get_cell(self.get_argument(1))
+            cell2: Cell = self.get_cell(self.get_argument(2))
 
-            self.ChangeValue(cell1, result)
-        
-        elif CMD == INCREMENT_CELL:
-            result = None
-            cell = self.GetCell(self.GetArgument(1, command))
-            self.ChangeValue(cell, 1, mode = "add")
-        
-        elif CMD == DECREMENT_CELL:
-            result = None
-            cell = self.GetCell(self.GetArgument(1, command))
-            self.ChangeValue(cell, -1, mode = "add")
-        
-        elif CMD == MODULO_CELLS:
-            result = None
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
-
-            if cell1.dataType == cell2.dataType:
-                if cell1.dataType != STRING:
+            if isinstance(cell1, type(cell2)):
+                if not isinstance(cell1, StringCell):
                     result = cell1.value % cell2.value
+                    self.update_value(cell1, result)
                 else:
-                    NoString(self.currentLine, self.currentCommand)
+                    NoString(self.current_line_number, self.current_command_in_string)
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == CLEAR_CONSOLE:
-            if usingOS == "Windows":
-                os.system("cls")
-            elif usingOS == "Linux":
-                os.system("clear -r")
+        elif command == CLEAR_CONSOLE:
+            os.system("cls" if sys.platform == "win32" else "clear -r")
         
-        elif CMD == EQUAL_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == EQUAL_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value == cell2.value and nextCommand:
-                self.currentLine = nextCommand[0]
-                self.currentCommand = " ".join(nextCommand[1])
-                self.ExecuteCommand(nextCommand[1], None)
-            self.skipNextCommand = True
+            if cell1.value == cell2.value and next_line:
+                # Выполняем следующую строку сразу и сигнализируем главному циклу пропустить её
+                self.current_line_number = next_line[0]
+                self.current_command_in_string = " ".join(next_line[1])
+                self.current_command = next_line[1]
+                self.interpret_line(next_line[1], None)
+            #else:
+            self.will_skip_next_line = True
         
-        elif CMD == NOT_EQUAL_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == NOT_EQUAL_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value != cell2.value and nextCommand:
-                self.currentLine = nextCommand[0]
-                self.currentCommand = " ".join(nextCommand[1])
-                self.ExecuteCommand(nextCommand[1], None)
-            self.skipNextCommand = True
+            if cell1.value != cell2.value and next_line:
+                self.current_line_number = next_line[0]
+                self.current_command_in_string = " ".join(next_line[1])
+                self.current_command = next_line[1]
+                self.interpret_line(next_line[1], None)
+            #else:
+            self.will_skip_next_line = True
         
-        elif CMD == GREATER_THAN_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == GREATER_THAN_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value > cell2.value and nextCommand:
-                self.currentLine = nextCommand[0]
-                self.currentCommand = " ".join(nextCommand[1])
-                self.ExecuteCommand(nextCommand[1], None)
-            self.skipNextCommand = True
+            if cell1.value > cell2.value and next_line:
+                self.current_line_number = next_line[0]
+                self.current_command_in_string = " ".join(next_line[1])
+                self.current_command = next_line[1]
+                self.interpret_line(next_line[1], None)
+            self.will_skip_next_line = True
         
-        elif CMD == LESS_THAN_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == LESS_THAN_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value < cell2.value and nextCommand:
-                self.currentLine = nextCommand[0]
-                self.currentCommand = " ".join(nextCommand[1])
-                self.ExecuteCommand(nextCommand[1], None)
-            self.skipNextCommand = True
+            if cell1.value < cell2.value and next_line:
+                self.current_line_number = next_line[0]
+                self.current_command_in_string = " ".join(next_line[1])
+                self.current_command = next_line[1]
+                self.interpret_line(next_line[1], None)
+            self.will_skip_next_line = True
         
-        elif CMD == GREATER_EQUAL_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == GREATER_EQUAL_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value >= cell2.value and nextCommand:
-                self.currentLine = nextCommand[0]
-                self.currentCommand = " ".join(nextCommand[1])
-                self.ExecuteCommand(nextCommand[1], None)
-            self.skipNextCommand = True
+            if cell1.value >= cell2.value and next_line:
+                self.current_line_number = next_line[0]
+                self.current_command_in_string = " ".join(next_line[1])
+                self.current_command = next_line[1]
+                self.interpret_line(next_line[1], None)
+            self.will_skip_next_line = True
 
-        elif CMD == LESS_EQUAL_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == LESS_EQUAL_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value <= cell2.value and nextCommand:
-                self.currentLine = nextCommand[0]
-                self.currentCommand = " ".join(nextCommand[1])
-                self.ExecuteCommand(nextCommand[1], None)
-            self.skipNextCommand = True
+            if cell1.value <= cell2.value and next_line:
+                self.current_line_number = next_line[0]
+                self.current_command_in_string = " ".join(next_line[1])
+                self.current_command = next_line[1]
+                self.interpret_line(next_line[1], None)
+            self.will_skip_next_line = True
         
-        elif CMD == UPPERCASE_CELL:
-            cell = self.GetCell(self.GetArgument(1, command))
+        elif command == UPPERCASE_CELL:
+            cell = self.get_cell(self.get_argument(1))
 
-            if cell.dataType == STRING:
+            if isinstance(cell, StringCell):
                 cell.value = cell.value.upper()
             else:
-                TypeIsNotString(self.currentLine, self.currentCommand)
+                TypeIsNotString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == LOWERCASE_CELL:
-            cell = self.GetCell(self.GetArgument(1, command))
+        elif command == LOWERCASE_CELL:
+            cell = self.get_cell(self.get_argument(1))
 
-            if cell.dataType == STRING:
+            if isinstance(cell, StringCell):
                 cell.value = cell.value.lower()
             else:
-                TypeIsNotString(self.currentLine, self.currentCommand)
+                TypeIsNotString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == LENGTH_CELL:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == LENGTH_CELL:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell2.dataType == STRING:
-                self.ChangeValue(cell1, len(cell2.value))
+            if isinstance(cell2, StringCell):
+                self.update_value(cell1, len(cell2.value))
             else:
-                TypeIsNotString(self.currentLine, self.currentCommand, cell2.name)
+                TypeIsNotString(self.current_line_number, self.current_command_in_string, cell2.name)
 
-        elif CMD == INVERT_CELL:
-            cell = self.GetCell(self.GetArgument(1, command))
+        elif command == INVERT_CELL:
+            cell = self.get_cell(self.get_argument(1))
 
-            if cell.dataType == STRING:
+            if isinstance(cell, StringCell):
                 cell.value = cell.value[::-1]
             else:
                 cell.value = -cell.value
         
-        elif CMD == CALL_BLOCK:
-            cell = self.GetCell(self.GetArgument(1, command))
+        elif command == CALL_BLOCK:
+            cell = self.get_cell(self.get_argument(1))
 
             if str(cell.value) in self.blocks:
-                self.executionStack.append([str(cell.value), False])
+                self.execution_stack.append(
+                    ExecutionFrame(block_name = str(cell.value), is_looping = False, line_index = 0)
+                )
                 return True
             else:
                 BlockNotFound(cell.value)
         
-        elif CMD == ADD_CONSTANT:
-            value = self.GetArgument(2, command)
-            cell = self.GetCell(self.GetArgument(1, command))
+        elif command == ADD_CONSTANT:
+            value = self.get_argument(2)
+            cell = self.get_cell(self.get_argument(1))
 
-            self.ChangeValue(cell, value, mode = "add")
+            self.update_value(cell, value, UpdateMode.ADD)
         
-        elif CMD == SWAP_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == SWAP_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType:
+            if isinstance(cell1, type(cell2)):
                 cell1.value, cell2.value = cell2.value, cell1.value
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == COPY_CELL:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == COPY_CELL:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType:
+            if isinstance(cell1, type(cell2)):
                 cell1.value = cell2.value
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == DELETE_CHAR:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == DELETE_CHAR:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == STRING and cell2.dataType == INT:
+            if isinstance(cell1, StringCell) and isinstance(cell2, IntegerCell):
                 cell1.value[:cell2.value] + cell1.value[cell2.value+1:]
             else:
-                StringAndInt(self.currentLine, self.currentCommand)
+                StringAndInt(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == STRING_TO_INT:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == STRING_TO_INT:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
+            self.update_value(cell1, cell2.value)
+        
+        elif command == INT_TO_STRING:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
+            self.update_value(cell1, cell2.value)
+        
+        elif command == BITWISE_AND:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            self.ChangeValue(cell1, cell2.value)
-        
-        elif CMD == INT_TO_STRING:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
-            self.ChangeValue(cell1, cell2.value, False)
-        
-        elif CMD == BITWISE_AND:
-            result = None
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
-
-            if cell1.dataType == cell2.dataType:
-                if cell1.dataType != STRING:
+            if isinstance(cell1, type(cell2)):
+                if not isinstance(cell1, StringCell):
                     result = cell1.value & cell2.value
+                    self.update_value(cell1, result)
                 else:
-                    NoString(self.currentLine, self.currentCommand)
+                    NoString(self.current_line_number, self.current_command_in_string)
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
-
-            self.ChangeValue(cell1, result)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == BITWISE_OR:
+        elif command == BITWISE_OR:
             result = None
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType:
-                if cell1.dataType != STRING:
+            if isinstance(cell1, type(cell2)):
+                if not isinstance(cell1, StringCell):
                     result = cell1.value | cell2.value
+                    self.update_value(cell1, result)
                 else:
-                    NoString(self.currentLine, self.currentCommand)
+                    NoString(self.current_line_number, self.current_command_in_string)
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
-
-            self.ChangeValue(cell1, result)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == BITWISE_XOR:
+        elif command == BITWISE_XOR:
             result = None
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType:
-                if cell1.dataType != STRING:
+            if isinstance(cell1, type(cell2)):
+                if not isinstance(cell1, StringCell):
                     result = cell1.value ^ cell2.value
+                    self.update_value(cell1, result)
                 else:
-                    NoString(self.currentLine, self.currentCommand)
+                    NoString(self.current_line_number, self.current_command_in_string)
             else:
-                DifferentTypes(self.currentLine, self.currentCommand)
-
-            self.ChangeValue(cell1, result)
+                DifferentTypes(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == BITWISE_NOT:
-            cell = self.GetCell(self.GetArgument(1, command))
+        elif command == BITWISE_NOT:
+            cell = self.get_cell(self.get_argument(1))
 
-            if cell.dataType != STRING:
+            if not isinstance(cell, StringCell):
                 cell.value = ~cell.value
             else:
-                NoString(self.currentLine, self.currentCommand)
+                NoString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == SLEEP:
-            cell = self.GetCell(self.GetArgument(1, command))
+        elif command == SLEEP:
+            cell = self.get_cell(self.get_argument(1))
 
-            if cell.dataType != STRING:
+            if not isinstance(cell, StringCell):
                 time.sleep(cell.value)
             else:
-                NoString(self.currentLine, self.currentCommand)
+                NoString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == START_LOOP:
-            cell = self.GetCell(self.GetArgument(1, command))
+        elif command == START_LOOP:
+            cell = self.get_cell(self.get_argument(1))
 
             if str(cell.value) in self.blocks:
-                self.executionStack.append([str(cell.value), True])
+                self.execution_stack.append(
+                    ExecutionFrame(block_name = str(cell.value), is_looping = True, line_index = 0)
+                )
                 return True
             else:
                 BlockNotFound(cell.value)
         
-        elif CMD == RANDOM_CHAR:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == RANDOM_CHAR:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType and cell1.dataType == STRING:
+            if isinstance(cell1, type(cell2)) and isinstance(cell1, StringCell):
                 cell1.value = random.choice(cell2.value)
             else:
-                TypeIsNotString(self.currentLine, self.currentCommand)
+                TypeIsNotString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == MAX_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == MAX_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType and cell1.value != STRING:
+            if isinstance(cell1, type(cell2)) and not isinstance(cell1, StringCell):
                 cell1.value = max(cell1.value, cell2.value)
             else:
-                NoString(self.currentLine, self.currentCommand)
+                NoString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == MIN_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == MIN_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType and cell1.value != STRING:
+            if isinstance(cell1, type(cell2)) and not isinstance(cell1, StringCell):
                 cell1.value = min(cell1.value, cell2.value)
             else:
-                NoString(self.currentLine, self.currentCommand)
+                NoString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == GCD_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == GCD_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType and cell1.value != STRING:
+            if isinstance(cell1, type(cell2)) and not isinstance(cell1, StringCell):
                 v1, v2 = cell1.value, cell2.value
                 while v2 != 0:
                     v1, v2 = v2, v1 % v2
                 cell1.value = v1
             else:
-                NoString(self.currentLine, self.currentCommand)
+                NoString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == LCM_CELLS:
-            cell1 = self.GetCell(self.GetArgument(1, command))
-            cell2 = self.GetCell(self.GetArgument(2, command))
+        elif command == LCM_CELLS:
+            cell1 = self.get_cell(self.get_argument(1))
+            cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.dataType == cell2.dataType and cell1.value != STRING:
+            if isinstance(cell1, type(cell2)) and not isinstance(cell1, StringCell):
                 v1, v2 = cell1.value, cell2.value
                 while v2 != 0:
                     v1, v2 = v2, v1 % v2
                 cell1.value = abs(cell1.value * cell2.value) // v1
             else:
-                NoString(self.currentLine, self.currentCommand)
+                NoString(self.current_line_number, self.current_command_in_string)
         
-        elif CMD == CREATE_CELL:
-            cellName = self.GetArgument(1, command)
-            cellDataType = self.GetArgument(2, command)
-            defaultValue = None
+        elif command == CREATE_CELL:
+            name = self.get_argument(1)
+            data_type = self.get_argument(2)
 
-            if not Cell.isCorrectName(cellName):
-                IncorrectCellName(self.currentLine, self.currentCommand, cellName)
-            elif not Cell.isCorrectDataType(cellDataType):
-                IncorrectDataType(self.currentLine, self.currentCommand, cellDataType)
+            if not Cell.is_name_correct(name):
+                IncorrectCellName(self.current_line_number, self.current_command_in_string, name)
 
-            defaultValue = 0 if cellDataType != STRING else ""
-            Cell(cellName, defaultValue, cellDataType)
+            match data_type:
+                case CellDataType.INTEGER:
+                    self.cells.append(IntegerCell(name))
+                case CellDataType.FLOAT:
+                    self.cells.append(FloatCell(name))
+                case CellDataType.STRING:
+                    self.cells.append(StringCell(name))
+                case _:
+                    IncorrectDataType(self.current_line_number, self.current_command_in_string, data_type)
         
-        elif CMD == RETURN:
-            self.returnCalled = True
+        elif command == RETURN:
+            self.is_return_called = True
         
         else:
-            InvalidSyntax(self.currentLine, self.currentCommand)
+            InvalidSyntax(self.current_line_number, self.current_command_in_string)
 
-    def Parse(self):
-        lines = self.code.split('\n')
-        result = {}
+    def parse(self, source: str) -> dict[str, list[list[int | list[str]]]]:
+        lines = source.split('\n')
+        blocks: dict[str, list[list[int | list[str]]]] = {}
         block = None
-        line_number = 1
 
-        for line in lines:
+        for line_number, line in enumerate(lines, 1):
             if line.startswith(START_BLOCK):
-                if block != None:
-                    del result[block]
-                words = line.split()
-                if len(words) <= 1 or len(words) > 2:
+                _, _, block_name = line.partition(' ')
+                if not block_name.strip():
                     block = None
                     continue
-                block = words[1]
-                result[block] = []
+                block = block_name.strip()
+                blocks[block] = []
             elif line.startswith(END_BLOCK):
                 block = None
             elif block is not None and line.strip():
-                parsed_line = (line_number, re.findall(r'(?:"[^"]*"|[^"\s]+)', line))
-                if '$' in parsed_line[1]:
-                    parsed_line = (parsed_line[0], parsed_line[1][:parsed_line[1].index('$')])
-                if parsed_line[1]:
-                    result[block].append(parsed_line)
+                tokens = [match.group(1) if match.group(1) else match.group(0) 
+                        for match in re.finditer(r'"([^"]*)"|\S+', line)]
+                
+                if '$' in tokens:
+                    tokens = tokens[:tokens.index('$')]
+                
+                blocks[block].append((line_number, tokens))
 
-            line_number += 1
-
-        self.blocks = result
+        return blocks
     
-    def GetCell(self, name: str) -> Cell:
-        cell = Cell.GetCellByName(name)
+    def get_cell(self, name: str) -> Cell:
+        cell = Cell.get_cell(name, self.cells)
+
         if cell != None:
             return cell
-        CellNotFound(self.currentLine, self.currentCommand, name)
-    
-    def GetArgument(self, index: int, command: list[str]) -> str:
-        if index <= len(command) - 1:
-            return command[index]
-        InvalidSyntax(self.currentLine, self.currentCommand)
-    
-    def ChangeValue(self, cell: Cell, value: str, lookAtQuotes = True, mode = "set") -> bool:
-        if value != str:
-            value = str(value)
-
-        if cell.dataType == INT:
-            if Cell.isInt(value):
-                if mode == "set":
-                    cell.value = int(value)
-                elif mode == "add":
-                    cell.value += int(value)
-            else:
-                IncorrectValue(self.currentLine, self.currentCommand, "int")
         
-        elif cell.dataType == FLOAT:
-            if Cell.isFloat(value):
-                if mode == "set":
-                    cell.value = float(value)
-                elif mode == "add":
-                    cell.value += float(value)
+        CellNotFound(self.current_line_number, self.current_command_in_string, name)
+    
+    def get_argument(self, index: int) -> str:
+        if index <= len(self.current_command) - 1:
+            return self.current_command[index]
+        InvalidSyntax(self.current_line_number, self.current_command)
+    
+    # def get_arguments(self, *indexes: list[int]) -> str:
+    #     arguments: list[]
+        
+    #     for index in indexes:
+    #         if index <= len(self.current_command) - 1:
+    #             return self.current_command[index]
+    #         else:
+    #             InvalidSyntax(self.current_line_index, self.current_command)
+    
+    def update_value(self, cell: Cell, value: str, mode: UpdateMode = UpdateMode.WRITE) -> bool:
+        if isinstance(cell, IntegerCell):
+            if Cell.is_number(value):
+                match mode:
+                    case UpdateMode.WRITE:
+                        cell.value = int(value)
+                    case UpdateMode.ADD:
+                        cell.value += int(value)
             else:
-                IncorrectValue(self.currentLine, self.currentCommand, "float")
-            
-        elif cell.dataType == STRING:
-            if Cell.isString(value) or not lookAtQuotes:
-                if mode == "set":
-                    cell.value = value[1:-1] if lookAtQuotes else value
-                elif mode == "add":
-                    cell.value += value[1:-1]
+                IncorrectValue(self.current_line_number, self.current_command_in_string, "int")
+        
+        elif isinstance(cell, FloatCell):
+            if Cell.is_number(value):
+                match mode:
+                    case UpdateMode.WRITE:
+                        cell.value = float(value)
+                    case UpdateMode.ADD:
+                        cell.value += float(value)
             else:
-                IncorrectValue(self.currentLine, self.currentCommand, "string")
+                IncorrectValue(self.current_line_number, self.current_command_in_string, "float")
+        
+        # else - it's a string 
+        else:
+            match mode:
+                case UpdateMode.WRITE:
+                    cell.value = value
+                case UpdateMode.ADD:
+                    cell.value += value
