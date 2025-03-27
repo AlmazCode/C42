@@ -38,12 +38,11 @@ class Interpreter:
         )
 
         while self.execution_stack:
-
             frame = self.execution_stack.pop()
             block = self.blocks[frame.block_name]
 
-            while frame.line_number < len(block):
-                self.current_line_number, self.current_command = block[frame.line_number]
+            while frame.line_number < len(block.data):
+                self.current_line_number, self.current_command = block.data[frame.line_number]
                 self.current_command_in_string = " ".join(self.current_command)
 
                 if self.will_skip_next_line:
@@ -51,7 +50,7 @@ class Interpreter:
                     frame.line_number += 1
                     continue
 
-                next_command = block[frame.line_number + 1] if frame.line_number + 1 < len(block) else None
+                next_command = block.data[frame.line_number + 1] if frame.line_number + 1 < len(block.data) else None
                 force_exit = self.interpret_line(self.current_command, next_command)
 
                 frame.line_number += 1
@@ -64,14 +63,14 @@ class Interpreter:
                     ExecutionFrame(block_name = frame.block_name, is_looping = frame.is_looping, line_number = 0)
                 )
                 self.is_return_called = False
-            elif force_exit and frame.line_number < len(block):
+            elif force_exit and frame.line_number < len(block.data):
                 self.execution_stack.append(
                     ExecutionFrame(block_name = frame.block_name, is_looping = frame.is_looping,
                                    line_number = frame.line_number)
                 )
                 self.execution_stack[-1], self.execution_stack[-2] = self.execution_stack[-2], self.execution_stack[-1]
     
-    def interpret_line(self, line, next_line):
+    def interpret_line(self, line, next_line) -> bool:
         command = line[0]
 
         if command == EXIT:
@@ -453,11 +452,11 @@ class Interpreter:
                 self.handle_error("CFTE2", self.current_line_number, self.current_command_in_string, name = name)
 
             match data_type:
-                case CellDataType.INTEGER:
+                case CellDataType.INTEGER.value:
                     self.cells.append(IntegerCell(name))
-                case CellDataType.FLOAT:
+                case CellDataType.FLOAT.value:
                     self.cells.append(FloatCell(name))
-                case CellDataType.STRING:
+                case CellDataType.STRING.value:
                     self.cells.append(StringCell(name))
                 case _:
                     self.handle_error("CFTE1", self.current_line_number, self.current_command_in_string, data_type = data_type)
@@ -468,9 +467,9 @@ class Interpreter:
         else:
             self.handle_error("CFTE3", self.current_line_number, self.current_command_in_string, command = command)
 
-    def parse(self, source: str) -> dict[str, list[list[int | list[str]]]]:
+    def parse(self, source: str) -> dict[str, BlockData]:
         lines = source.split('\n')
-        blocks: dict[str, list[list[int | list[str]]]] = {}
+        blocks: dict[str, BlockData] = {}
         block = None
 
         for line_number, line in enumerate(lines, 1):
@@ -480,7 +479,7 @@ class Interpreter:
                     block = None
                     continue
                 block = block_name.strip()
-                blocks[block] = []
+                blocks[block] = BlockData()
             elif line.startswith(END_BLOCK):
                 block = None
             elif block is not None and line.strip():
@@ -490,7 +489,7 @@ class Interpreter:
                 if COMMENT_SYMBOL in tokens:
                     tokens = tokens[:tokens.index(COMMENT_SYMBOL)]
                 
-                blocks[block].append((line_number, tokens))
+                blocks[block].data.append([line_number, tokens])
 
         return blocks
     
@@ -507,7 +506,7 @@ class Interpreter:
             return self.current_command[index]
         self.handle_error("CFTE12", self.current_line_number, self.current_command)
     
-    def update_value(self, cell: Cell, value: str, mode: UpdateMode = UpdateMode.WRITE) -> NoReturn:
+    def update_value(self, cell: Cell, value: str, mode: str = UpdateMode.WRITE) -> NoReturn:
         if isinstance(cell, IntegerCell):
             if Cell.is_number(value):
                 match mode:
