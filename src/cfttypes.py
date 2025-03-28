@@ -2,23 +2,27 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Union
 
-# enum for comfortable cell type working
+
 class CellDataType(Enum):
+    """Enum representing possible data types for a cell in memory."""
+
     INTEGER = "0"
     STRING  = "1"
     FLOAT   = "2"
 
-# enum for comfortable cell value changing
 class UpdateMode(Enum):
-    WRITE   = "w"
-    ADD     = "a"
+    """Enum defining modes for updating a cell's value."""
 
-# class for comfortable working with interpreter
+    WRITE   = "w"   # write mode
+    ADD     = "a"   # adding mode
+
 @dataclass
 class ExecutionFrame:
+    """Represents an execution frame, storing metadata about the current block being executed in the interpreter."""
+
     block_name: str     # name of block
     is_looping: bool    # is block looping? (true if only the block's called from a 35 command)
-    line_number: int    # current line number
+    index: int          # current index in the block
 
 class BlockData:
     """

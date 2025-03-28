@@ -46,5 +46,5 @@ RETURN              = "42" # Возвращение из блока.
 
 START_BLOCK     = "#1"      # start of the block
 END_BLOCK       = "#0"      # end of the block
-ENTER_FUNCTION  = "main"    # enter function of program
+ENTER_BLOCK     = "main"    # enter block of program
 COMMENT_SYMBOL  = '$'       # the symbol to start a comment line

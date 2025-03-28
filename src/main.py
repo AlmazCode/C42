@@ -2,7 +2,7 @@ import click
 from interpreter import Interpreter
 
 @click.command()
-@click.argument("filename", default="src/Test/code.cft", required=False, type=click.Path(exists=True, readable=True))
+@click.argument("filename", default="src/Examples/testing conditions.cft", required=False, type=click.Path(exists=True, readable=True))
 def run(filename):
     """C42 Interpretator"""
 

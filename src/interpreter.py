@@ -12,66 +12,89 @@ from cell import *
 class Interpreter:
     def __init__(self, source: str):
 
-        self.cells: list[Cell]                      = []
-        self.current_line_number: int               = 0
-        self.current_command_in_string: str         = ""
-        self.current_command: list[str]             = None 
-        self.will_skip_next_line                    = False
-        self.execution_stack: list[ExecutionFrame] = []
-        self.is_return_called: bool                 = False
+        self.cells: list[Cell]                      = []    # list of all cells of the program
+        self.current_frame: ExecutionFrame          = None  # metadata of current block 
+        self.will_skip_next_line                    = False # if true, the next line'll be skipped (using only in conditions)
+        self.execution_stack: list[ExecutionFrame]  = []    # stack of all executing blocks
+        self.is_return_called: bool                 = False # if true, the current executing block'll be finished
+        self.is_executing_new_block                 = False # if true, the program will start executing a new block
 
         self.blocks = self.parse(source)
     
-    def interpret(self, block_name: str | None = None):
+    # returns current line number in executing block
+    @property
+    def current_line(self) -> int:
+        return self.current_block.data[0]
 
-        if block_name is None:
-            block_name = ENTER_FUNCTION
-
-        if block_name not in self.blocks:
-            if block_name == ENTER_FUNCTION:
-                self.handle_error("CFTE11")
-            else:
-                self.handle_error("CFTE10", name = block_name)
+    # returns current command in executing block
+    @property
+    def current_command(self) -> list[str]:
+        return self.current_block.data[self.current_frame.index][1]
+    
+    # returns current command (string version) in executing block
+    @property
+    def current_command_str(self) -> str:
+        return " ".join(self.current_block.data[self.current_frame.index][1])
+    
+    # returns current executing block
+    @property
+    def current_block(self) -> BlockData:
+        return self.blocks[self.current_frame.block_name]
+    
+    def interpret(self) -> NoReturn:
         
         self.execution_stack.append(
-            ExecutionFrame(block_name = block_name, is_looping = False, line_number = 0)
+            ExecutionFrame(block_name = ENTER_BLOCK, is_looping = False, index = 0)
         )
 
         while self.execution_stack:
-            frame = self.execution_stack.pop()
-            block = self.blocks[frame.block_name]
+            self.current_frame = self.execution_stack.pop()
+            block = self.current_block
 
-            while frame.line_number < len(block.data):
-                self.current_line_number, self.current_command = block.data[frame.line_number]
-                self.current_command_in_string = " ".join(self.current_command)
+            if self.current_frame.block_name not in self.blocks:
+
+                # if enter block doesn't exists
+                if self.current_frame.block_name == ENTER_BLOCK:
+                    self.handle_error("CFTE11")
+
+                # else if it's another block called from code and it doesn't exists
+                else:
+                    self.handle_error("CFTE10", name = self.current_frame.block_name)
+
+            while self.current_frame.index < len(block.data):
 
                 if self.will_skip_next_line:
                     self.will_skip_next_line = False
-                    frame.line_number += 1
+                    self.current_frame.index += 1
                     continue
 
-                next_command = block.data[frame.line_number + 1] if frame.line_number + 1 < len(block.data) else None
-                force_exit = self.interpret_line(self.current_command, next_command)
+                next_command = block.data[self.current_frame.index + 1][1] if self.current_frame.index + 1 < len(block.data) else None
+                self.interpret_line(self.current_command, next_command)
 
-                frame.line_number += 1
-
-                if self.is_return_called or force_exit:
+                if self.is_return_called or self.is_executing_new_block:
                     break
 
-            if frame.is_looping and not self.is_return_called:
+            if self.current_frame.is_looping and not self.is_return_called:
                 self.execution_stack.append(
-                    ExecutionFrame(block_name = frame.block_name, is_looping = frame.is_looping, line_number = 0)
+                    ExecutionFrame(block_name = self.current_frame.block_name, is_looping = self.current_frame.is_looping, index = 0)
                 )
-                self.is_return_called = False
-            elif force_exit and frame.line_number < len(block.data):
+            elif self.is_executing_new_block and self.current_frame.index < len(block.data):
                 self.execution_stack.append(
-                    ExecutionFrame(block_name = frame.block_name, is_looping = frame.is_looping,
-                                   line_number = frame.line_number)
+                    ExecutionFrame(block_name = self.current_frame.block_name, is_looping = self.current_frame.is_looping,
+                                   index = self.current_frame.index)
                 )
                 self.execution_stack[-1], self.execution_stack[-2] = self.execution_stack[-2], self.execution_stack[-1]
+
+            self.is_return_called       = False
+            self.is_executing_new_block = False
+        
+        self.cft_exit()
     
-    def interpret_line(self, line, next_line) -> bool:
+    def interpret_line(self, line: list[str], next_line: list[str], force_update_line: bool = False) -> NoReturn:
         command = line[0]
+
+        if force_update_line:
+            self.current_frame.index += 1
 
         if command == EXIT:
             self.cft_exit()
@@ -100,7 +123,7 @@ class Interpreter:
                 result = cell1.value + cell2.value
                 self.update_value(cell1, result, False)
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == SUBTRACT_CELLS:
             cell1: Cell = self.get_cell(self.get_argument(1))
@@ -111,9 +134,9 @@ class Interpreter:
                     result = cell1.value - cell2.value
                     self.update_value(cell1, result)
                 else:
-                    self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                    self.handle_error("CFTE6", self.current_line, self.current_command_str)
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == MULTIPLY_CELLS:
             cell1: Cell = self.get_cell(self.get_argument(1))
@@ -124,9 +147,9 @@ class Interpreter:
                     result = cell1.value * cell2.value
                     self.update_value(cell1, result)
                 else:
-                    self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                    self.handle_error("CFTE6", self.current_line, self.current_command_str)
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == DIVIDE_CELLS:
             cell1: Cell = self.get_cell(self.get_argument(1))
@@ -137,9 +160,9 @@ class Interpreter:
                     result = cell1.value / cell2.value
                     self.update_value(cell1, result)
                 else:
-                    self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                    self.handle_error("CFTE6", self.current_line, self.current_command_str)
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == INCREMENT_CELL:
             cell = self.get_cell(self.get_argument(1))
@@ -158,9 +181,9 @@ class Interpreter:
                     result = cell1.value % cell2.value
                     self.update_value(cell1, result)
                 else:
-                    self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                    self.handle_error("CFTE6", self.current_line, self.current_command_str)
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == CLEAR_CONSOLE:
             os.system("cls" if sys.platform == "win32" else "clear -r")
@@ -169,73 +192,42 @@ class Interpreter:
             cell1 = self.get_cell(self.get_argument(1))
             cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value == cell2.value and next_line:
-                # Выполняем следующую строку сразу и сигнализируем главному циклу пропустить её
-                self.current_line_number = next_line[0]
-                self.current_command_in_string = " ".join(next_line[1])
-                self.current_command = next_line[1]
-                self.interpret_line(next_line[1], None)
-
+            force_update_line = self.execute_condition(cell1.value == cell2.value, next_line)
             self.will_skip_next_line = True
         
         elif command == NOT_EQUAL_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
             cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value != cell2.value and next_line:
-                self.current_line_number = next_line[0]
-                self.current_command_in_string = " ".join(next_line[1])
-                self.current_command = next_line[1]
-                self.interpret_line(next_line[1], None)
-
+            force_update_line = self.execute_condition(cell1.value != cell2.value, next_line)
             self.will_skip_next_line = True
         
         elif command == GREATER_THAN_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
             cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value > cell2.value and next_line:
-                self.current_line_number = next_line[0]
-                self.current_command_in_string = " ".join(next_line[1])
-                self.current_command = next_line[1]
-                self.interpret_line(next_line[1], None)
-
+            force_update_line = self.execute_condition(cell1.value > cell2.value, next_line)
             self.will_skip_next_line = True
         
         elif command == LESS_THAN_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
             cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value < cell2.value and next_line:
-                self.current_line_number = next_line[0]
-                self.current_command_in_string = " ".join(next_line[1])
-                self.current_command = next_line[1]
-                self.interpret_line(next_line[1], None)
-
+            force_update_line = self.execute_condition(cell1.value < cell2.value, next_line)
             self.will_skip_next_line = True
         
         elif command == GREATER_EQUAL_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
             cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value >= cell2.value and next_line:
-                self.current_line_number = next_line[0]
-                self.current_command_in_string = " ".join(next_line[1])
-                self.current_command = next_line[1]
-                self.interpret_line(next_line[1], None)
-
+            force_update_line = self.execute_condition(cell1.value >= cell2.value, next_line)
             self.will_skip_next_line = True
 
         elif command == LESS_EQUAL_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
             cell2 = self.get_cell(self.get_argument(2))
 
-            if cell1.value <= cell2.value and next_line:
-                self.current_line_number = next_line[0]
-                self.current_command_in_string = " ".join(next_line[1])
-                self.current_command = next_line[1]
-                self.interpret_line(next_line[1], None)
-
+            force_update_line = self.execute_condition(cell1.value <= cell2.value, next_line)
             self.will_skip_next_line = True
         
         elif command == UPPERCASE_CELL:
@@ -244,7 +236,7 @@ class Interpreter:
             if isinstance(cell, StringCell):
                 cell.value = cell.value.upper()
             else:
-                self.handle_error("CFTE5", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE5", self.current_line, self.current_command_str)
         
         elif command == LOWERCASE_CELL:
             cell = self.get_cell(self.get_argument(1))
@@ -252,7 +244,7 @@ class Interpreter:
             if isinstance(cell, StringCell):
                 cell.value = cell.value.lower()
             else:
-                self.handle_error("CFTE5", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE5", self.current_line, self.current_command_str)
         
         elif command == LENGTH_CELL:
             cell1 = self.get_cell(self.get_argument(1))
@@ -261,7 +253,7 @@ class Interpreter:
             if isinstance(cell2, StringCell):
                 self.update_value(cell1, len(cell2.value))
             else:
-                self.handle_error("CFTE5", self.current_line_number, self.current_command_in_string, cell2.name)
+                self.handle_error("CFTE5", self.current_line, self.current_command_str, cell2.name)
 
         elif command == INVERT_CELL:
             cell = self.get_cell(self.get_argument(1))
@@ -276,9 +268,9 @@ class Interpreter:
 
             if str(cell.value) in self.blocks:
                 self.execution_stack.append(
-                    ExecutionFrame(block_name = str(cell.value), is_looping = False, line_number = 0)
+                    ExecutionFrame(block_name = str(cell.value), is_looping = False, index = 0)
                 )
-                return True
+                self.is_executing_new_block = True
             else:
                 self.handle_error("CFTE10", name = cell.value)
         
@@ -295,7 +287,7 @@ class Interpreter:
             if isinstance(cell1, type(cell2)):
                 cell1.value, cell2.value = cell2.value, cell1.value
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == COPY_CELL:
             cell1 = self.get_cell(self.get_argument(1))
@@ -304,7 +296,7 @@ class Interpreter:
             if isinstance(cell1, type(cell2)):
                 cell1.value = cell2.value
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == DELETE_CHAR:
             cell1 = self.get_cell(self.get_argument(1))
@@ -313,7 +305,7 @@ class Interpreter:
             if isinstance(cell1, StringCell) and isinstance(cell2, IntegerCell):
                 cell1.value[:cell2.value] + cell1.value[cell2.value+1:]
             else:
-                self.handle_error("CFTE4", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE4", self.current_line, self.current_command_str)
         
         elif command == STRING_TO_INT:
             cell1 = self.get_cell(self.get_argument(1))
@@ -334,9 +326,9 @@ class Interpreter:
                     result = cell1.value & cell2.value
                     self.update_value(cell1, result)
                 else:
-                    self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                    self.handle_error("CFTE6", self.current_line, self.current_command_str)
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == BITWISE_OR:
             result = None
@@ -348,9 +340,9 @@ class Interpreter:
                     result = cell1.value | cell2.value
                     self.update_value(cell1, result)
                 else:
-                    self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                    self.handle_error("CFTE6", self.current_line, self.current_command_str)
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == BITWISE_XOR:
             result = None
@@ -362,9 +354,9 @@ class Interpreter:
                     result = cell1.value ^ cell2.value
                     self.update_value(cell1, result)
                 else:
-                    self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                    self.handle_error("CFTE6", self.current_line, self.current_command_str)
             else:
-                self.handle_error("CFTE7", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE7", self.current_line, self.current_command_str)
         
         elif command == BITWISE_NOT:
             cell = self.get_cell(self.get_argument(1))
@@ -372,7 +364,7 @@ class Interpreter:
             if not isinstance(cell, StringCell):
                 cell.value = ~cell.value
             else:
-                self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE6", self.current_line, self.current_command_str)
         
         elif command == SLEEP:
             cell = self.get_cell(self.get_argument(1))
@@ -380,16 +372,16 @@ class Interpreter:
             if not isinstance(cell, StringCell):
                 time.sleep(cell.value)
             else:
-                self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE6", self.current_line, self.current_command_str)
         
         elif command == START_LOOP:
             cell = self.get_cell(self.get_argument(1))
 
             if str(cell.value) in self.blocks:
                 self.execution_stack.append(
-                    ExecutionFrame(block_name = str(cell.value), is_looping = True, line_number = 0)
+                    ExecutionFrame(block_name = str(cell.value), is_looping = True, index = 0)
                 )
-                return True
+                self.is_executing_new_block = True
             else:
                 self.handle_error("CFTE10", name = cell.value)
         
@@ -400,7 +392,7 @@ class Interpreter:
             if isinstance(cell1, type(cell2)) and isinstance(cell1, StringCell):
                 cell1.value = random.choice(cell2.value)
             else:
-                self.handle_error("CFTE5", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE5", self.current_line, self.current_command_str)
         
         elif command == MAX_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
@@ -409,7 +401,7 @@ class Interpreter:
             if isinstance(cell1, type(cell2)) and not isinstance(cell1, StringCell):
                 cell1.value = max(cell1.value, cell2.value)
             else:
-                self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE6", self.current_line, self.current_command_str)
         
         elif command == MIN_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
@@ -418,7 +410,7 @@ class Interpreter:
             if isinstance(cell1, type(cell2)) and not isinstance(cell1, StringCell):
                 cell1.value = min(cell1.value, cell2.value)
             else:
-                self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE6", self.current_line, self.current_command_str)
         
         elif command == GCD_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
@@ -430,7 +422,7 @@ class Interpreter:
                     v1, v2 = v2, v1 % v2
                 cell1.value = v1
             else:
-                self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE6", self.current_line, self.current_command_str)
         
         elif command == LCM_CELLS:
             cell1 = self.get_cell(self.get_argument(1))
@@ -442,14 +434,14 @@ class Interpreter:
                     v1, v2 = v2, v1 % v2
                 cell1.value = abs(cell1.value * cell2.value) // v1
             else:
-                self.handle_error("CFTE6", self.current_line_number, self.current_command_in_string)
+                self.handle_error("CFTE6", self.current_line, self.current_command_str)
         
         elif command == CREATE_CELL:
             name = self.get_argument(1)
             data_type = self.get_argument(2)
 
             if not Cell.is_name_correct(name):
-                self.handle_error("CFTE2", self.current_line_number, self.current_command_in_string, name = name)
+                self.handle_error("CFTE2", self.current_line, self.current_command_str, name = name)
 
             match data_type:
                 case CellDataType.INTEGER.value:
@@ -459,13 +451,16 @@ class Interpreter:
                 case CellDataType.STRING.value:
                     self.cells.append(StringCell(name))
                 case _:
-                    self.handle_error("CFTE1", self.current_line_number, self.current_command_in_string, data_type = data_type)
+                    self.handle_error("CFTE1", self.current_line, self.current_command_str, data_type = data_type)
         
         elif command == RETURN:
             self.is_return_called = True
         
         else:
-            self.handle_error("CFTE3", self.current_line_number, self.current_command_in_string, command = command)
+            self.handle_error("CFTE3", self.current_line, self.current_command_str, command = command)
+        
+        if not force_update_line:
+            self.current_frame.index += 1
 
     def parse(self, source: str) -> dict[str, BlockData]:
         lines = source.split('\n')
@@ -499,12 +494,12 @@ class Interpreter:
         if cell != None:
             return cell
         
-        self.handle_error("CFTE8", self.current_line_number, self.current_command_in_string, name = name)
+        self.handle_error("CFTE8", self.current_line, self.current_command_str, name = name)
     
     def get_argument(self, index: int) -> str:
         if index <= len(self.current_command) - 1:
             return self.current_command[index]
-        self.handle_error("CFTE12", self.current_line_number, self.current_command)
+        self.handle_error("CFTE12", self.current_line, self.current_command)
     
     def update_value(self, cell: Cell, value: str, mode: str = UpdateMode.WRITE) -> NoReturn:
         if isinstance(cell, IntegerCell):
@@ -515,7 +510,7 @@ class Interpreter:
                     case UpdateMode.ADD:
                         cell.value += int(value)
             else:
-                self.handle_error("CFTE9", self.current_line_number, self.current_command_in_string, data_type = "int")
+                self.handle_error("CFTE9", self.current_line, self.current_command_str, data_type = "int")
         
         elif isinstance(cell, FloatCell):
             if Cell.is_number(value):
@@ -525,7 +520,7 @@ class Interpreter:
                     case UpdateMode.ADD:
                         cell.value += float(value)
             else:
-                self.handle_error("CFTE9", self.current_line_number, self.current_command_in_string, data_type = "float")
+                self.handle_error("CFTE9", self.current_line, self.current_command_str, data_type = "float")
         
         # else - it's a string 
         else:
@@ -534,6 +529,13 @@ class Interpreter:
                     cell.value = value
                 case UpdateMode.ADD:
                     cell.value += value
+        
+    def execute_condition(self, condition: bool, next_line: list[str]) -> bool:
+
+        if condition and next_line:
+            self.interpret_line(next_line, None, True)
+        
+        return condition and next_line
     
     def handle_error(self, error_number: str, line: int | None = None, command_in_string: str | None = None, **kwargs) -> NoReturn:
         formatted_exception = exception.ERRORS[error_number].format(**kwargs)
