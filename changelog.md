@@ -1,4 +1,4 @@
-#C42 1.1o
+# C42 1.1o
 
 There're all fixes and improvements:
 - Source code's been rewrited (exceptions, conditions, classes, optimization etc.). Now code is more readable than before.

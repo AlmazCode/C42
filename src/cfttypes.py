@@ -4,21 +4,27 @@ from typing import Union
 
 
 class CellDataType(Enum):
-    """Enum representing possible data types for a cell in memory."""
+    """
+    Enum representing possible data types for a cell in memory.
+    """
 
     INTEGER = "0"
     STRING  = "1"
     FLOAT   = "2"
 
 class UpdateMode(Enum):
-    """Enum defining modes for updating a cell's value."""
+    """
+    Enum defining modes for updating a cell's value.
+    """
 
     WRITE   = "w"   # write mode
     ADD     = "a"   # adding mode
 
 @dataclass
 class ExecutionFrame:
-    """Represents an execution frame, storing metadata about the current block being executed in the interpreter."""
+    """
+    Represents an execution frame, storing metadata about the current block being executed in the interpreter.
+    """
 
     block_name: str     # name of block
     is_looping: bool    # is block looping? (true if only the block's called from a 35 command)

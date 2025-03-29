@@ -24,7 +24,7 @@ class Interpreter:
     # returns current line number in executing block
     @property
     def current_line(self) -> int:
-        return self.current_block.data[0]
+        return self.current_block.data[self.current_frame.index][0]
 
     # returns current command in executing block
     @property
