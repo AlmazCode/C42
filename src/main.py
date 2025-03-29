@@ -1,3 +1,6 @@
+__author__ = "AlmazCode"
+__vertion__ = "1.1o"
+
 import click
 from interpreter import Interpreter
 
