@@ -12,7 +12,7 @@ from cell import *
 class Interpreter:
     def __init__(self, source: str):
 
-        self.cells: list[Cell]                      = []    # list of all cells of the program
+        self.cells: dict[str, Cell]                 = {}    # dict of all cells of the program
         self.current_frame: ExecutionFrame          = None  # metadata of current block 
         self.will_skip_next_line                    = False # if true, the next line'll be skipped (using only in conditions)
         self.execution_stack: list[ExecutionFrame]  = []    # stack of all executing blocks
@@ -48,9 +48,10 @@ class Interpreter:
         )
 
         while self.execution_stack:
-            self.current_frame = self.execution_stack.pop()
-            block = self.current_block
 
+            self.current_frame = self.execution_stack.pop()
+
+            # ------
             if self.current_frame.block_name not in self.blocks:
 
                 # if enter block doesn't exists
@@ -60,24 +61,35 @@ class Interpreter:
                 # else if it's another block called from code and it doesn't exists
                 else:
                     self.handle_error("CFTE10", name = self.current_frame.block_name)
+            # ------
+            
+            block = self.current_block
 
             while self.current_frame.index < len(block.data):
 
+                # if a condition block was called, then the next command'll be skipped
                 if self.will_skip_next_line:
                     self.will_skip_next_line = False
                     self.current_frame.index += 1
                     continue
 
-                next_command = block.data[self.current_frame.index + 1][1] if self.current_frame.index + 1 < len(block.data) else None
-                self.interpret_line(self.current_command, next_command)
-
+                # interpreting a command
+                self.interpret_line(self.current_command, self.get_next_command(block))
+                # ------
+                
+                # if return called (a 42 command) or a new block's started executing, then current block'll break
                 if self.is_return_called or self.is_executing_new_block:
                     break
-
+            
+            # when the block has ended and the block's looped and the return command's not been called, the block'll start again
             if self.current_frame.is_looping and not self.is_return_called:
                 self.execution_stack.append(
-                    ExecutionFrame(block_name = self.current_frame.block_name, is_looping = self.current_frame.is_looping, index = 0)
+                    ExecutionFrame(block_name = self.current_frame.block_name, is_looping = self.current_frame.is_looping,
+                                   index = 0)
                 )
+
+            # if a new block has started and the current block has not yet finished, the program will add the current block
+            # to the execution stack to execute the remaining instruction in the old block after the new one is finished
             elif self.is_executing_new_block and self.current_frame.index < len(block.data):
                 self.execution_stack.append(
                     ExecutionFrame(block_name = self.current_frame.block_name, is_looping = self.current_frame.is_looping,
@@ -253,7 +265,7 @@ class Interpreter:
             if isinstance(cell2, StringCell):
                 self.update_value(cell1, len(cell2.value))
             else:
-                self.handle_error("CFTE5", self.current_line, self.current_command_str, cell2.name)
+                self.handle_error("CFTE5", self.current_line, self.current_command_str)
 
         elif command == INVERT_CELL:
             cell = self.get_cell(self.get_argument(1))
@@ -445,13 +457,15 @@ class Interpreter:
 
             match data_type:
                 case CellDataType.INTEGER.value:
-                    self.cells.append(IntegerCell(name))
+                    cell: Cell = IntegerCell()
                 case CellDataType.FLOAT.value:
-                    self.cells.append(FloatCell(name))
+                    cell: Cell = FloatCell()
                 case CellDataType.STRING.value:
-                    self.cells.append(StringCell(name))
+                    cell: Cell = StringCell()
                 case _:
                     self.handle_error("CFTE1", self.current_line, self.current_command_str, data_type = data_type)
+            
+            self.cells[name] = cell
         
         elif command == RETURN:
             self.is_return_called = True
@@ -463,28 +477,31 @@ class Interpreter:
             self.current_frame.index += 1
 
     def parse(self, source: str) -> dict[str, BlockData]:
-        lines = source.split('\n')
-        blocks: dict[str, BlockData] = {}
+        # Удаляем комментарии перед обработкой строк
+        lines = [
+            line.split(COMMENT_SYMBOL, 1)[0].rstrip()  # Обрезаем комментарий и пробелы в конце
+            for line in source.splitlines()
+        ]
+
+        blocks = {}
         block = None
 
         for line_number, line in enumerate(lines, 1):
+            if not line:  # Пропускаем пустые строки
+                continue
+
             if line.startswith(START_BLOCK):
                 _, _, block_name = line.partition(' ')
-                if not block_name.strip():
-                    block = None
-                    continue
                 block = block_name.strip()
-                blocks[block] = BlockData()
+                if block:  # Создаём новый блок, если имя не пустое
+                    blocks[block] = BlockData()
             elif line.startswith(END_BLOCK):
                 block = None
-            elif block is not None and line.strip():
-                tokens = [match.group(1) if match.group(1) else match.group(0) 
+            elif block:
+                tokens = [match.group(1) if match.group(1) else match.group(0)
                         for match in re.finditer(r'"([^"]*)"|\S+', line)]
-                
-                if COMMENT_SYMBOL in tokens:
-                    tokens = tokens[:tokens.index(COMMENT_SYMBOL)]
-                
-                blocks[block].data.append([line_number, tokens])
+                if tokens:
+                    blocks[block].data.append((line_number, tokens))
 
         return blocks
     
@@ -500,6 +517,14 @@ class Interpreter:
         if index <= len(self.current_command) - 1:
             return self.current_command[index]
         self.handle_error("CFTE12", self.current_line, self.current_command)
+    
+    # returns next command in current block
+    def get_next_command(self, block: BlockData) -> list[str]:
+        return (
+            block.data[self.current_frame.index + 1][1] \
+            if self.current_frame.index + 1 < len(block.data) \
+            else None
+        )
     
     def update_value(self, cell: Cell, value: str, mode: str = UpdateMode.WRITE) -> NoReturn:
         if isinstance(cell, IntegerCell):

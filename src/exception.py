@@ -1,15 +1,20 @@
 from colorama import Fore
-
+from typing import NoReturn
 
 class Exception:
-    def __init__(self, error_number, message, line=None, command_in_string=None):
+    def __init__(
+            self,
+            error_number: str,
+            message: str,
+            line: int | None = None,
+            command_in_string: str | None = None) -> NoReturn:
 
         if command_in_string is not None:
             print(f"  -> {command_in_string}")
         if line is not None:
-            print(f"{Fore.CYAN}[{line}] {Fore.RESET}{error_number} : {Fore.RED}{message}{Fore.RESET}")
+            print(f"{Fore.CYAN}[{line}] {Fore.RESET}{error_number} : {Fore.RED}{message}{Fore.RESET}", end = "")
         else:
-            print(f"{error_number} : {Fore.RED}{message}{Fore.RESET}")
+            print(f"{error_number} : {Fore.RED}{message}{Fore.RESET}", end = "")
 
 
 ERRORS: dict[str, str] = {
