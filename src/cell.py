@@ -6,10 +6,6 @@ import re
 class Cell:
     def __init__(self, default: int | float | str) -> NoReturn:
         self.value = default
-    
-    @staticmethod
-    def get_cell(name: str, cells: dict[str, 'Cell']) -> Union['Cell', None]:
-        return cells.get(name, None)
 
     @staticmethod
     def is_number(s: str | int | float) -> bool:

@@ -10,11 +10,11 @@ class Exception:
             command_in_string: str | None = None) -> NoReturn:
 
         if command_in_string is not None:
-            print(f"  -> {command_in_string}")
+            print(f"\n\n  -> {command_in_string}")
         if line is not None:
-            print(f"{Fore.CYAN}[{line}] {Fore.RESET}{error_number} : {Fore.RED}{message}{Fore.RESET}", end = "")
+            print(f"{Fore.CYAN}[{line}] {Fore.RESET}{error_number} : {Fore.RED}{message}{Fore.RESET}")
         else:
-            print(f"{error_number} : {Fore.RED}{message}{Fore.RESET}", end = "")
+            print(f"{error_number} : {Fore.RED}{message}{Fore.RESET}")
 
 
 ERRORS: dict[str, str] = {

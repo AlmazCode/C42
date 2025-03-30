@@ -17,8 +17,17 @@ class UpdateMode(Enum):
     Enum defining modes for updating a cell's value.
     """
 
-    WRITE   = "w"   # write mode
-    ADD     = "a"   # adding mode
+    WRITE   = "w"
+    ADD     = "a"
+
+class LineArgument(Enum):
+    """
+    Enum defines the numbers of arguments to search in line
+    """
+
+    COMMAND     = 0
+    FIRST       = 1
+    SECOND      = 2
 
 @dataclass
 class ExecutionFrame:
