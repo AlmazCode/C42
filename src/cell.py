@@ -1,10 +1,8 @@
-from typing import NoReturn, Union
-
 import re
 
 
 class Cell:
-    def __init__(self, default: int | float | str) -> NoReturn:
+    def __init__(self, default: int | float | str) -> None:
         self.value = default
 
     @staticmethod
@@ -20,13 +18,13 @@ class Cell:
         return bool(re.match(r"^-[1-9][0-9]*$", name))
 
 class IntegerCell(Cell):
-    def __init__(self) -> NoReturn:
+    def __init__(self) -> None:
         super().__init__(0)
 
 class FloatCell(Cell):
-    def __init__(self) -> NoReturn:
+    def __init__(self) -> None:
         super().__init__(0.0)
 
 class StringCell(Cell):
-    def __init__(self) -> NoReturn:
+    def __init__(self) -> None:
         super().__init__("")

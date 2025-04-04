@@ -1,5 +1,4 @@
 from colorama import Fore
-from typing import NoReturn
 
 class Exception:
     def __init__(
@@ -7,7 +6,7 @@ class Exception:
             error_number: str,
             message: str,
             line: int | None = None,
-            command_in_string: str | None = None) -> NoReturn:
+            command_in_string: str | None = None) -> None:
 
         if command_in_string is not None:
             print(f"\n\n  -> {command_in_string}")

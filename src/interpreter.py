@@ -14,27 +14,26 @@ class Interpreter:
 
         self.cells: dict[str, Cell]                 = {}    # dict of all cells of the program
         self.execution_stack: list[ExecutionFrame]  = []    # stack of all executing blocks
+        
         self.__current_frame: ExecutionFrame        = None  # metadata of current block 
-        self.__will_skip_next_line                  = False # if true, the next line'll be skipped (using only in conditions)
+        self.__will_skip_next_line: bool            = False # if true, the next line'll be skipped (using only in conditions)
         self.__is_return_called: bool               = False # if true, the current executing block'll be finished
-        self.__is_executing_new_block               = False # if true, the program will start executing a new block
-        self.__cls_command                          = "cls" if sys.platform == "win32" else "clear -r" # for 12's command
+        self.__is_executing_new_block: bool         = False # if true, the program will start executing a new block
+        self.__cls_command: str                     = "cls" if sys.platform == "win32" else "clear -r" # for 12's command
         self.__current_line: list[str]              = None  # value of current line with command and its args
         self.__current_line_number: int             = None  # value of line number of current command
         self.__current_line_str: str                = None  # value of current command in string version
-        
-        self.blocks = self.parse(source)
+
+        self.blocks: dict[str, BlockData] = self.parse(source)
     
-    def interpret(self) -> NoReturn:
-        
-        self.execution_stack.append(
-            ExecutionFrame(block_name = ENTER_BLOCK, is_looping = False, index = 0)
-        )
+    # region Interpretation
+    def interpret(self) -> None:
+
+        self.execute_block(ENTER_BLOCK, False, 0)
 
         while self.execution_stack:
-
             self.__current_frame = self.execution_stack.pop()
-            current_block = self.blocks[self.__current_frame.block_name]
+            current_block: BlockData = self.blocks[self.__current_frame.block_name]
 
             # ------
             if self.__current_frame.block_name not in self.blocks:
@@ -54,7 +53,7 @@ class Interpreter:
                 self.__current_line_number  = current_block.data[self.__current_frame.index][0]
                 self.__current_line_str     = " ".join(self.__current_line)
 
-                # if a condition block was called, then the next command'll be skipped
+                # if a condition block was called and it returned true, then the next command'll be skipped
                 if self.__will_skip_next_line:
                     self.__will_skip_next_line = False
                     self.__current_frame.index += 1
@@ -71,37 +70,32 @@ class Interpreter:
             
             # when the block has ended and the block's looped and the return command's not been called, the block'll start again
             if self.__current_frame.is_looping and not self.__is_return_called:
-                self.execution_stack.append(
-                    ExecutionFrame(block_name = self.__current_frame.block_name, is_looping = self.__current_frame.is_looping,
-                                   index = 0)
-                )
+                self.execute_block(self.__current_frame.block_name, self.__current_frame.is_looping, 0)
 
             # if a new block has started and the current block has not yet finished, the program will add the current block
             # to the execution stack to execute the remaining instruction in the old block after the new one is finished
             elif self.__is_executing_new_block and self.__current_frame.index < len(current_block.data):
-                self.execution_stack.append(
-                    ExecutionFrame(block_name = self.__current_frame.block_name, is_looping = self.__current_frame.is_looping,
-                                   index = self.__current_frame.index)
-                )
+                self.execute_block(self.__current_frame.block_name, self.__current_frame.is_looping, self.__current_frame.index)
                 self.execution_stack[-1], self.execution_stack[-2] = self.execution_stack[-2], self.execution_stack[-1]
 
             self.__is_return_called       = False
             self.__is_executing_new_block = False
         
         self.cft_exit()
+    #endregion
     
-    def interpret_line(self) -> NoReturn:
+    #region Commands
+    def interpret_line(self) -> None:
         _COMMAND = self.get_argument(LineArgument.COMMAND)
 
         if _COMMAND == EXIT:
             self.cft_exit()
         
-        # PRINT command realization
         elif _COMMAND == PRINT:
             cell: Cell = self.get_cell(self.get_argument(LineArgument.FIRST))
             formatted_value = str(cell.value).replace("\\n", "\n")
             print(formatted_value, end = "", flush = True)
-    
+
         elif _COMMAND == INPUT:
             cell = self.get_cell(self.get_argument(LineArgument.FIRST))
             value = input()
@@ -262,11 +256,10 @@ class Interpreter:
         
         elif _COMMAND == CALL_BLOCK:
             cell = self.get_cell(self.get_argument(LineArgument.FIRST))
+            value = str(cell.value)
 
-            if str(cell.value) in self.blocks:
-                self.execution_stack.append(
-                    ExecutionFrame(block_name = str(cell.value), is_looping = False, index = 0)
-                )
+            if value in self.blocks:
+                self.execute_block(value, False, 0)
                 self.__is_executing_new_block = True
             else:
                 self.handle_error("CFTE10", name = cell.value)
@@ -373,11 +366,10 @@ class Interpreter:
         
         elif _COMMAND == START_LOOP:
             cell = self.get_cell(self.get_argument(LineArgument.FIRST))
+            value = cell.value
 
-            if str(cell.value) in self.blocks:
-                self.execution_stack.append(
-                    ExecutionFrame(block_name = str(cell.value), is_looping = True, index = 0)
-                )
+            if value in self.blocks:
+                self.execute_block(value, True, 0)
                 self.__is_executing_new_block = True
             else:
                 self.handle_error("CFTE10", name = cell.value)
@@ -449,11 +441,19 @@ class Interpreter:
         elif _COMMAND == RETURN:
             self.__is_return_called = True
         
+        # if command isn't defined, then the CFTE3 error will handled
         else:
             self.handle_error("CFTE3", self.__current_line_number, self.__current_line_str, command = _COMMAND)
+    
+    #endregion
 
-    # parses the source code
+    #region Parser
     def parse(self, source: str) -> dict[str, BlockData]:
+        
+        """
+        Parses the source code
+        """
+        
         lines = [
             line.split(COMMENT_SYMBOL, 1)[0].rstrip()
             for line in source.splitlines()
@@ -480,24 +480,36 @@ class Interpreter:
                     blocks[block].data.append((line_number, tokens))
 
         return blocks
-    
+    #endregion
 
-    # returns a cell from the cells
+    #region Methods
     def get_cell(self, name: str) -> Cell:
         
+        """
+        Returns a cell from the cells
+        """
+
         if (cell := self.cells.get(name, None)) is not None:
             return cell
         
         self.handle_error("CFTE8", self.__current_line_number, self.__current_line_str, name = name)
 
-    # returns argument value in the line by index
     def get_argument(self, index: LineArgument) -> str:
+        
+        """
+        Returns an argument value in the line by index
+        """
+        
         if 0 <= index.value < len(self.__current_line):
             return self.__current_line[index.value]
         self.handle_error("CFTE12", self.__current_line_number, self.__current_line_str)
     
-    # updates a cell's value (only write or add)
-    def update_value(self, cell: Cell, value: str, mode: UpdateMode = UpdateMode.WRITE) -> NoReturn:
+    def update_value(self, cell: Cell, value: str, mode: UpdateMode = UpdateMode.WRITE) -> None:
+        
+        """
+        Updates a cell's value (only write or add)
+        """
+        
         if isinstance(cell, IntegerCell):
             if Cell.is_number(value):
                 match mode:
@@ -525,12 +537,32 @@ class Interpreter:
                     cell.value = value
                 case UpdateMode.ADD:
                     cell.value += value
+
+    def execute_block(self, name: str, is_looping: bool, index: int) -> None:
+
+        """
+        Adds a new execution block to the execution stack
+        """
+
+        self.execution_stack.append(ExecutionFrame(name, is_looping, index))
     
     def handle_error(self, error_number: str, line: int | None = None, command_in_string: str | None = None, **kwargs) -> NoReturn:
+        
+        """
+        Main function for error handling
+        """
+        
         formatted_exception = exception.ERRORS[error_number].format(**kwargs)
         exception.Exception(error_number, formatted_exception, line, command_in_string)
         self.cft_exit()
 
     def cft_exit(self) -> NoReturn:
+
+        """
+        Ends program execution
+        """
+
         print("\n[Program Finished]")
         sys.exit()
+    
+    #endregion
