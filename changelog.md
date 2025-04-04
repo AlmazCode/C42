@@ -1,4 +1,4 @@
-# C42 1.1.0 Release Notes  
+# C42 1.1o Release Notes  
 
 ## Changes and Improvements:  
 - **Code Refactoring**: The source code has been rewritten to improve readability and maintainability. This includes enhancements in exception handling, conditional logic, class structures, and overall optimization.  
