@@ -18,38 +18,38 @@ class Exception:
 
 ERRORS: dict[str, str] = {
     # INVALID SYNTAX
-    "CFTE12": "Недопустимый синтаксис",
+    "CFTE12": "Invalid syntax",
 
     # ENTER FUNCTION NOT FOUND
-    "CFTE11": "Не удалось найти точку входа",
+    "CFTE11": "Failed to find entry point",
     
     # BLOCK NOT FOUND
-    "CFTE10": "Не удалось найти блок под именем `{name}`",
+    "CFTE10": "Failed to find block with name `{name}`",
     
-    # INCCORECT VALUE
-    "CFTE9": "Некорректное значение для типа `{data_type}`",
+    # INCORRECT VALUE
+    "CFTE9": "Incorrect value for type `{data_type}`",
     
     # CELL NOT FOUND
-    "CFTE8": "Не удалось найти ячейку под именем `{name}`",
+    "CFTE8": "Failed to find cell with name `{name}`",
     
     # CELLS HAVE DIFFERENT TYPES
-    "CFTE7": "Ячейки имеют разные типы данных",
+    "CFTE7": "Cells have different data types",
     
     # NO STRING
-    "CFTE6": "В данной команде нельзя использовать ячейку с типом `string`",
+    "CFTE6": "Cannot use cell with type `string` in this command",
     
     # CELL'S TYPE HAVE TO BE A STRING
-    "CFTE5": "Тип ячейки должен быть `string`",
+    "CFTE5": "Cell type must be `string`",
 
     # STRING AND INT
-    "CFTE4": "У первой ячейки должен быть тип `string`, а у второй `int`",
+    "CFTE4": "First cell must have type `string`, and second cell must have type `int`",
     
     # UNDEFINED COMMAND
-    "CFTE3": "Не существующая команда `{command}`",
+    "CFTE3": "Non-existent command `{command}`",
 
-    # INCCORECT CELL NAME
-    "CFTE2": "Некорректное имя ячейки `{name}`. Может быть только отрицательным числом от -1",
+    # INCORRECT CELL NAME
+    "CFTE2": "Incorrect cell name `{name}`. Can only be a negative number starting from -1",
     
     # UNDEFINED DATA TYPE
-    "CFTE1": "Не существует такого типа данных как `{data_type}`"
+    "CFTE1": "Data type `{data_type}` does not exist"
 }

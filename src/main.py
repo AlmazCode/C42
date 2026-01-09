@@ -1,13 +1,22 @@
 __author__ = "AlmazCode"
-__vertion__ = "1.1o"
+__vertion__ = "1.1.5"
+
 
 import click
+
+from pathlib import Path
 from interpreter import Interpreter
+from constants import FILE_EXTENSIONS
+
 
 @click.command()
-@click.argument("filename", default="src/Examples/testing conditions.cft", required=False, type=click.Path(exists=True, readable=True))
+@click.argument("filename", required=False, type=click.Path(exists=True, readable=True))
 def run(filename):
     """C42 Interpretator"""
+
+    file_suffix = Path(filename).suffix[1:]
+    if file_suffix not in FILE_EXTENSIONS:
+        raise NameError(f"Incorrect file extension! Must be one of the following: {', '.join(FILE_EXTENSIONS)}")
 
     with open(filename, "r", encoding="utf-8") as file:
         code = file.read()

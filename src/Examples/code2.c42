@@ -1,0 +1,131 @@
+$ A simple calculator
+
+#1 main
+
+    $ creating cells
+    41 -1   2 $ first number
+    41 -2   2 $ second number
+    41 -3   1 $ operator
+
+    41 -4   1 $ auxiliary cell for future comparison with the operator entered by the user (+)
+    41 -5   1 $ auxiliary cell for future comparison with the operator entered by the user (-)
+    41 -6   1 $ auxiliary cell for future comparison with the operator entered by the user (*)
+    41 -7   1 $ auxiliary cell for future comparison with the operator entered by the user (/)
+
+    41 -8   1 $ auxiliary cell for prompt output (first number)
+    41 -9   1 $ auxiliary cell for prompt output (second number)
+    41 -10  1 $ auxiliary cell for prompt output (operator)
+
+    41 -11  1 $ cell that stores the name of the main program loop block
+
+    41 -12  1 $ cell that stores the name of the block for performing the addition operation
+    41 -13  1 $ cell that stores the name of the block for performing the subtraction operation
+    41 -14  1 $ cell that stores the name of the block for performing the multiplication operation
+    41 -15  1 $ cell that stores the name of the block for performing the division operation
+
+    41 -16  2 $ cell for temporary storage of the value of cell `-1`
+    41 -17  1 $ cell for storing a new line (\n)
+
+    $ assigning values to cells
+    04 -4   "+"
+    04 -5   "-"
+    04 -6   "*"
+    04 -7   "/"
+    04 -8   "Enter first number: "
+    04 -9   "Enter second number: "
+    04 -10  "Enter operator (+, -, *, /): "
+    04 -11  "loop"
+    04 -12  "op_add"
+    04 -13  "op_sub"
+    04 -14  "op_mul"
+    04 -15  "op_div"
+    04 -17  "\n"
+
+    $ call the main loop
+    35 -11
+
+#0
+
+#1 loop
+
+    $ enter user data into cell `-1`
+    02 -8
+    03 -1
+
+    $ enter user data into cell `-2`
+    02 -9
+    03 -2
+
+    $ enter user data into cell `-3`
+    02 -10
+    03 -3
+
+    $ check whether the user entered the '+' operator
+    $ if yes, then call the op_add block
+    13 -3 -4
+    23 -12
+
+    $ check whether the user entered the '-' operator
+    $ if yes, then call the op_sub block
+    13 -3 -5
+    23 -13
+
+    $ check whether the user entered the '*' operator
+    $ if yes, then call the op_mul block
+    13 -3 -6
+    23 -14
+
+    $ check whether the user entered the '/' operator
+    $ if yes, then call the op_div block
+    13 -3 -7
+    23 -15
+
+#0
+
+#1 op_add
+
+    $ write the value of cell `-1` to cell `-16`.
+    26 -16 -1
+    $ add the values from cells `-16` and `-2`
+    05 -16 -2
+    $ then we display the result
+    02 -16
+    02 -17
+
+#0
+
+#1 op_sub
+
+    $ write the value of cell `-1` to cell `-16`.
+    26 -16 -1
+    $ subtract the values from cells `-16` and `-2`
+    06 -16 -2
+    $ then we display the result
+    02 -16
+    02 -17
+
+#0
+
+#1 op_mul
+
+    $ write the value of cell `-1` to cell `-16`.
+    26 -16 -1
+    $ multiply the values from cells `-16` and `-2`
+    07 -16 -2
+    $ then we display the result
+    02 -16
+    02 -17
+
+#0
+
+#1 op_div
+
+    $ write the value of cell `-1` to cell `-16`.
+    26 -16 -1
+    $ divide the values from cells `-16` and `-2`
+    08 -16 -2
+    $ then we display the result
+    02 -16
+    02 -17
+
+#0
