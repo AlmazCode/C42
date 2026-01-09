@@ -1,0 +1,54 @@
+$ Factorial calculation algorithm; by Gemini AI (2.5 Pro)
+
+#1 main
+
+    $ --- Cell creation ---
+    41 -1 0 $ Cell to store the user-input number (n)
+    41 -2 0 $ Cell to store the result (factorial)
+    41 -3 0 $ Loop counter cell (will decrease from n to 1)
+    41 -4 0 $ Constant cell with value 1 (for loop comparison)
+    41 -5 1 $ Cell to store the name of the loop block
+    41 -6 1 $ Cell for the input prompt string
+    41 -7 1 $ Cell for the result prefix string
+
+    $ --- Cell initialization ---
+    04 -4 1
+    04 -5 "factorial_loop"
+    04 -6 "Enter a number: "
+    04 -7 "Factorial is: "
+
+    $ --- Main logic ---
+    $ 1. Request user input
+    02 -6  $ Print "Enter a number: "
+    03 -1  $ Read the number into cell -1
+
+    $ 2. Prepare for the loop
+    26 -3 -1  $ Copy the input number (n) to the counter (-3)
+    04 -2 1   $ Initialize the result (-2) with one
+
+    $ 3. Start the loop
+    35 -5  $ Start an endless call to the block whose name is in cell -5 ("factorial_loop")
+
+    $ 4. Print the result (this code will execute after the loop finishes)
+    02 -7  $ Print "Factorial is: "
+    02 -2  $ Print the value of the result cell
+
+#0
+
+
+#1 factorial_loop
+
+    $ --- Loop body ---
+    $ 1. Check the exit condition: if the counter (-3) is less than or equal to 1, exit
+    18 -3 -4  $ If (-3 <= -4)...
+    42        $ ...then terminate the block/loop (break)
+
+    $ 2. Main action: multiply the current result by the counter value
+    07 -2 -3  $ result (-2) = result (-2) * counter (-3)
+
+    $ 3. Decrement the counter by 1
+    10 -3      $ Decrement cell -3
+
+    $ The loop repeats because it was called by command 35
+
+#0

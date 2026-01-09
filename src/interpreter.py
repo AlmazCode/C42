@@ -477,13 +477,16 @@ class Interpreter:
         """
         Parses the source code into blocks of data.
 
-        This method processes the provided source code string, splitting it into lines and identifying blocks defined by specific start and end markers. Each block is stored in a dictionary with the block name as the key and its associated data as the value.
+        This method processes the provided source code string, splitting it into lines and identifying blocks
+        defined by specific start and end markers. Each block is stored in a dictionary with the block name as
+        the key and its associated data as the value.
 
         Args:
             source (str): The source code to be parsed.
 
         Returns:
-            dict[str, BlockData]: A dictionary containing block names as keys and their corresponding BlockData as values.
+            dict[str, BlockData]: A dictionary containing block names as keys and their corresponding
+            BlockData as values.
         """
         
         lines = [
