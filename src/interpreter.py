@@ -312,7 +312,7 @@ class Interpreter:
             cell2 = self.get_cell(self.get_argument(LineArgument.SECOND))
 
             if isinstance(cell1, StringCell) and isinstance(cell2, IntegerCell):
-                cell1.value[:cell2.value] + cell1.value[cell2.value+1:]
+                cell1.value = cell1.value[:cell2.value] + cell1.value[cell2.value+1:]
             else:
                 self.handle_error("CFTE4", self.__current_line_number, self.__current_line_str)
         
